@@ -1,11 +1,21 @@
+import os
 import requests
 from bs4 import BeautifulSoup
 import json
+from dotenv import load_dotenv
+load_dotenv()
 
+TELEGRAM_CHAT_ID = os.environ['TELEGRAM_CHAT_ID']
+TELEGRAM_TOKEN = os.environ['TELEGRAM_TOKEN']
 
 website_url_root = "https://www.concorsipubblici.com"
 website_url_list = "https://www.concorsipubblici.com/concorsi/occupazione/pro/settore-informatico-600/loc/veneto"
 
+def send_message_to_telegram(message):
+    requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", data={
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": message
+    })
 
 try:
     with open("seen_bandi.json", "r") as f:
@@ -34,8 +44,12 @@ bandi_nuovi = [url for url in bandi_trovati if url not in bandi_visti]
 if bandi_nuovi:
     for url in bandi_nuovi:
         print(f"Nuovo bando trovato: {url}")
+        send_message_to_telegram(f"Nuovo bando trovato: {url}")
 else:
     print("Nessun nuovo bando trovato.")
 
 with open("seen_bandi.json", "w") as f:
     json.dump(bandi_trovati, f)
+
+
+
