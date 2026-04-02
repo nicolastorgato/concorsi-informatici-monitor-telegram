@@ -12,6 +12,11 @@ load_dotenv()
 TELEGRAM_CHAT_ID = os.environ['TELEGRAM_CHAT_ID']
 TELEGRAM_TOKEN = os.environ['TELEGRAM_TOKEN']
 
+OPENROUTER_API_KEY = os.environ.get('OPENROUTER_API_KEY')
+AI_MODEL = "qwen/qwen3.6-plus-preview:free"
+
+PROFILO = os.environ.get('PROFILO')
+
 SEEN_BANDI_FILE = "seen_bandi.json"
 
 KEYWORDS = ["funzionario", "specialista"]
@@ -48,10 +53,46 @@ def send_message_to_telegram(message):
         "text": message
     })
 
+def fetch_bando_details(bando_url):
+    """Scrape la pagina del bando per estrarre dettagli come titolo, scadenza, requisiti."""
+    response = requests.get(bando_url)
+    response.raise_for_status()
+    soup = BeautifulSoup(response.text, 'html.parser')
+    testo_completo = soup.get_text(separator='\n', strip=True)
+    return testo_completo
+
+def load_profilo():
+    """Carica il profilo utente da variabile d'ambiente."""
+    profilo = os.environ.get('PROFILO')
+    if not profilo:
+        raise ValueError("Variabile d'ambiente PROFILO non configurata")
+    return profilo
+
+def ai_evaluate_bando(testo_bando, profilo):
+    """Usa un modello AI per valutare se il bando è adatto al profilo dell'utente."""
+    if not OPENROUTER_API_KEY:
+        raise ValueError("Variabile d'ambiente OPENROUTER_API_KEY non configurata")
+
+    prompt = f"Valuta se questo bando di concorso pubblico è adatto a questo profilo:\n\nBando:\n{testo_bando}\n\nProfilo:\n{profilo}\n\nRispondi con 'Sì' o 'No' e una breve spiegazione."
+    
+    response = requests.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}"},
+        json={
+            "model": AI_MODEL,
+            "messages": [{"role": "user", "content": prompt}]
+        }
+    )
+    response.raise_for_status()
+    result = response.json()
+    return result['choices'][0]['message']['content'].strip()
+
 # MAIN
 def main():
     """Esegue il monitor: scarica i bandi, rileva i nuovi e invia le notifiche Telegram."""
     try:
+        if not PROFILO:
+            raise ValueError("Variabile d'ambiente PROFILO non configurata")
 
         bandi_visti = load_seen_bandi()
 
@@ -62,14 +103,17 @@ def main():
             titolo = bando.find('h2').text.strip()
             if any(kw in titolo.lower() for kw in KEYWORDS):
                 bando_url = WEBSITE_URL_ROOT + bando.find('a')['href']
+                fetch_bando_details(bando_url)  # per debug, stampa il testo completo del bando
                 bandi_trovati.append(bando_url)
 
         bandi_nuovi = [url for url in bandi_trovati if url not in bandi_visti]
 
         if bandi_nuovi:
             for url in bandi_nuovi:
-                print(f"Nuovo bando trovato: {url}")
-                send_message_to_telegram(f"Nuovo bando trovato: {url}")
+                testo_bando = fetch_bando_details(url)
+                valutazione = ai_evaluate_bando(testo_bando, PROFILO)
+                messaggio = f"🆕 Nuovo bando trovato!\n\n🔗 {url}\n\n🤖 {valutazione}"
+                send_message_to_telegram(messaggio)
         else:
             print("Nessun nuovo bando trovato.")
 
