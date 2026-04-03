@@ -1,5 +1,6 @@
 # IMPORTS
 import os
+import time
 import requests
 from bs4 import BeautifulSoup
 import json
@@ -13,7 +14,11 @@ TELEGRAM_CHAT_ID = os.environ['TELEGRAM_CHAT_ID']
 TELEGRAM_TOKEN = os.environ['TELEGRAM_TOKEN']
 
 OPENROUTER_API_KEY = os.environ.get('OPENROUTER_API_KEY')
-AI_MODEL = "qwen/qwen3.6-plus-preview:free"
+AI_MODELS = [
+    "qwen/qwen3.6-plus:free",
+    "nvidia/nemotron-nano-9b-v2:free",
+    "meta-llama/llama-3.3-70b-instruct:free",
+    ]
 
 PROFILO = os.environ.get('PROFILO')
 
@@ -73,19 +78,29 @@ def ai_evaluate_bando(testo_bando, profilo):
     if not OPENROUTER_API_KEY:
         raise ValueError("Variabile d'ambiente OPENROUTER_API_KEY non configurata")
 
-    prompt = f"Valuta se questo bando di concorso pubblico è adatto a questo profilo:\n\nBando:\n{testo_bando}\n\nProfilo:\n{profilo}\n\nRispondi con 'Sì' o 'No' e una breve spiegazione."
+    prompt = f"Valuta se questo bando di concorso pubblico è adatto a questo profilo:\n\nBando:\n{testo_bando}\n\nProfilo:\n{profilo}\n\nRispondi con una breve spiegazione."
     
-    response = requests.post(
-        "https://openrouter.ai/api/v1/chat/completions",
-        headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}"},
-        json={
-            "model": AI_MODEL,
-            "messages": [{"role": "user", "content": prompt}]
-        }
-    )
-    response.raise_for_status()
-    result = response.json()
-    return result['choices'][0]['message']['content'].strip()
+    for model in AI_MODELS:
+        try:
+            print(f"➡️ Chiamata API a {model}...")
+            response = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}"},
+                json={
+                    "model": model,
+                    "messages": [{"role": "user", "content": prompt}]
+                },
+                timeout=30
+            )
+            response.raise_for_status()
+            print(f"⬅️ Risposta da {model}")
+            return response.json()['choices'][0]['message']['content'].strip()
+        except Exception as e:
+            print(f"Errore con modello {model}: {e}, provo il prossimo...")
+            continue
+
+    return "⚠️ Valutazione AI non disponibile al momento."
+
 
 # MAIN
 def main():
@@ -103,7 +118,6 @@ def main():
             titolo = bando.find('h2').text.strip()
             if any(kw in titolo.lower() for kw in KEYWORDS):
                 bando_url = WEBSITE_URL_ROOT + bando.find('a')['href']
-                fetch_bando_details(bando_url)  # per debug, stampa il testo completo del bando
                 bandi_trovati.append(bando_url)
 
         bandi_nuovi = [url for url in bandi_trovati if url not in bandi_visti]
