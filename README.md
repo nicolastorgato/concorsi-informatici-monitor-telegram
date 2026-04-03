@@ -178,6 +178,7 @@ concorsi-informatici-monitor-telegram/
 │   └── test_ai.py            ← test della valutazione AI
 ├── .env.example              ← template per le variabili d'ambiente
 ├── .gitignore
+├── ai_prompt.txt             ← testo per prompt preciso e strutturato
 ├── main.py                   ← script principale
 ├── requirements.txt          ← dipendenze Python
 └── seen_bandi.json           ← bandi già notificati (aggiornato automaticamente)
