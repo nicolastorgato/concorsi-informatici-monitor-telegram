@@ -1,6 +1,5 @@
 # IMPORTS
 import os
-import time
 import requests
 from bs4 import BeautifulSoup
 import json
@@ -19,8 +18,6 @@ AI_MODELS = [
     "nvidia/nemotron-nano-9b-v2:free",
     "meta-llama/llama-3.3-70b-instruct:free",
     ]
-
-PROFILO = os.environ.get('PROFILO')
 
 SEEN_BANDI_FILE = "seen_bandi.json"
 
@@ -73,13 +70,20 @@ def load_profilo():
         raise ValueError("Variabile d'ambiente PROFILO non configurata")
     return profilo
 
+def read_ai_prompt():
+    """Legge il prompt AI da un file di testo."""
+    try:
+        with open("ai_prompt.txt", "r", encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        raise FileNotFoundError("File ai_prompt.txt non trovato")
+
 def ai_evaluate_bando(testo_bando, profilo):
     """Usa un modello AI per valutare se il bando è adatto al profilo dell'utente."""
     if not OPENROUTER_API_KEY:
         raise ValueError("Variabile d'ambiente OPENROUTER_API_KEY non configurata")
-
-    prompt = f"Valuta se questo bando di concorso pubblico è adatto a questo profilo:\n\nBando:\n{testo_bando}\n\nProfilo:\n{profilo}\n\nRispondi con una breve spiegazione."
-    
+    ai_prompt = read_ai_prompt()
+    prompt = ai_prompt.format(testo_bando=testo_bando, profilo=profilo)
     for model in AI_MODELS:
         try:
             print(f"➡️ Chiamata API a {model}...")
@@ -106,8 +110,7 @@ def ai_evaluate_bando(testo_bando, profilo):
 def main():
     """Esegue il monitor: scarica i bandi, rileva i nuovi e invia le notifiche Telegram."""
     try:
-        if not PROFILO:
-            raise ValueError("Variabile d'ambiente PROFILO non configurata")
+        profilo = load_profilo()
 
         bandi_visti = load_seen_bandi()
 
@@ -125,7 +128,7 @@ def main():
         if bandi_nuovi:
             for url in bandi_nuovi:
                 testo_bando = fetch_bando_details(url)
-                valutazione = ai_evaluate_bando(testo_bando, PROFILO)
+                valutazione = ai_evaluate_bando(testo_bando, profilo)
                 messaggio = f"🆕 Nuovo bando trovato!\n\n🔗 {url}\n\n🤖 {valutazione}"
                 send_message_to_telegram(messaggio)
         else:
