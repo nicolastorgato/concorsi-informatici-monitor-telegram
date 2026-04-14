@@ -1,6 +1,7 @@
 # IMPORTS
 import os
-import requests
+from curl_cffi import requests as curl_requests   # per lo scraping
+import requests                                   # per le API (opzionale)
 from bs4 import BeautifulSoup
 import json
 from dotenv import load_dotenv
@@ -14,7 +15,7 @@ TELEGRAM_TOKEN = os.environ['TELEGRAM_TOKEN']
 
 OPENROUTER_API_KEY = os.environ.get('OPENROUTER_API_KEY')
 AI_MODELS = [
-    "qwen/qwen3.6-plus:free",
+    "z-ai/glm-4.5-air:free",
     "nvidia/nemotron-nano-9b-v2:free",
     "meta-llama/llama-3.3-70b-instruct:free",
     ]
@@ -42,7 +43,11 @@ def save_seen_bandi(bandi):
 
 def scrape_bandi_attivi():
     """Scrape la pagina dei bandi attivi e restituisce una lista di elementi HTML dei bandi."""
-    response = requests.get(WEBSITE_URL_LIST)
+    response = curl_requests.get(
+        WEBSITE_URL_LIST, 
+        impersonate="chrome",
+        timeout=15
+    )
     response.raise_for_status()  # lancia eccezione se status != 200
     soup = BeautifulSoup(response.text, 'html.parser')
     bandi_attivi_contenitore = soup.find("div", class_="views-rows")
@@ -57,7 +62,11 @@ def send_message_to_telegram(message):
 
 def fetch_bando_details(bando_url):
     """Scrape la pagina del bando per estrarre dettagli come titolo, scadenza, requisiti."""
-    response = requests.get(bando_url)
+    response = curl_requests.get(
+        bando_url, 
+        impersonate="chrome",
+        timeout=15
+    )
     response.raise_for_status()
     soup = BeautifulSoup(response.text, 'html.parser')
     testo_completo = soup.get_text(separator='\n', strip=True)
