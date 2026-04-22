@@ -146,6 +146,8 @@ def main():
         save_seen_bandi(bandi_trovati)
 
     except Exception as e:
+        import traceback
+        print(traceback.format_exc())
         send_message_to_telegram(f"⚠️ Errore nel monitor: {e}")
 
 
