@@ -55,10 +55,15 @@ def scrape_bandi_attivi():
 
 def send_message_to_telegram(message):
     """Invia un messaggio testuale al bot Telegram configurato."""
-    requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", data={
-        "chat_id": TELEGRAM_CHAT_ID,
-        "text": message
-    })
+    try:
+        response = requests.post(
+            f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+            data={"chat_id": TELEGRAM_CHAT_ID, "text": message},
+            timeout=10
+        )
+        response.raise_for_status()
+    except Exception as e:
+        print(f"Errore invio Telegram: {e}")
 
 def fetch_bando_details(bando_url):
     """Scrape la pagina del bando per estrarre dettagli come titolo, scadenza, requisiti."""
