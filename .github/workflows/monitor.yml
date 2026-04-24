@@ -1,39 +1,39 @@
-name: Monitor Bandi
+name: Monitor Concorsi
 
 on:
   schedule:
-    - cron: '0 7 * * *'
-  workflow_dispatch:  # permette avvio manuale
+    - cron: '*/30 * * * *'  # ogni 30 minuti
+  workflow_dispatch:
 
 jobs:
   monitor:
     runs-on: ubuntu-latest
     steps:
-      - name: Scarica il codice
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Installa Python
+      - uses: actions/checkout@v4
+      
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
-            python-version: '3.11'
-
-      - name: Installa dipendenze
-        run: pip install -r requirements.txt
-
-      - name: Esegui lo script
-        run: python main.py
-        env:
-            TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-            TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-            OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-            PROFILO: ${{ secrets.PROFILO }}
-            
-      - name: Salva seen_bandi.json
+          python-version: '3.11'
+      
+      - name: Install dependencies
         run: |
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add seen_bandi.json
-            git diff --staged --quiet || git commit -m "Aggiorna seen_bandi.json [skip ci]"
-            git push
+          pip install -r requirements.txt
+          playwright install chromium
+          playwright install-deps
+      
+      - name: Run monitor
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          PROFILO: ${{ secrets.PROFILO }}
+        run: python main.py
+      
+      - name: Commit and push seen_bandi.json
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add seen_bandi.json
+          git diff --staged --quiet || git commit -m "Aggiorna seen_bandi.json [skip ci]"
+          git push
