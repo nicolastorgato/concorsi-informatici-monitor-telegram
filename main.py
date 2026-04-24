@@ -1,5 +1,7 @@
 # IMPORTS
 import os
+import time
+import random
 from curl_cffi import requests as curl_requests   # per lo scraping
 import requests                                   # per le API (opzionale)
 from bs4 import BeautifulSoup
@@ -27,7 +29,48 @@ KEYWORDS = ["funzionario", "specialista"]
 WEBSITE_URL_ROOT = "https://www.concorsipubblici.com"
 WEBSITE_URL_LIST = "https://www.concorsipubblici.com/concorsi/occupazione/pro/settore-informatico-600/loc/veneto"
 
+# ====================== SESSION PER LO SCRAPING ======================
+scrape_session = curl_requests.Session()
+scrape_session.impersonate = "chrome131"   # Prova anche "chrome", "chrome124", "edge"
+
+# Headers extra che aiutano a sembrare più reali
+SCRAPE_HEADERS = {
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+    "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Referer": "https://www.google.com/",
+    "DNT": "1",
+    "Connection": "keep-alive",
+    "Sec-Fetch-Site": "none",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-User": "?1",
+    "Sec-Fetch-Dest": "document",
+    "Upgrade-Insecure-Requests": "1",
+}
+
 # FUNCTIONS
+
+def scrape_get(url):
+    """Funzione helper per richieste di scraping con debug"""
+    print(f"🌐 Scraping: {url}")
+    
+    response = scrape_session.get(
+        url,
+        headers=SCRAPE_HEADERS,
+        timeout=20
+    )
+    
+    print(f"   → Status: {response.status_code}  |  Impersonate: chrome131")
+    
+    if response.status_code != 200:
+        print(f"   → Errore! Body (primi 600 caratteri):")
+        print(response.text[:600])
+        print("-" * 80)
+    
+    response.raise_for_status()
+    print(f"   ✓ Successo - Lunghezza pagina: {len(response.text)} caratteri")
+    return response
+
 def load_seen_bandi():
     """Carica la lista dei bandi già visti da seen_bandi.json."""
     try:
@@ -42,16 +85,23 @@ def save_seen_bandi(bandi):
         json.dump(bandi, f)
 
 def scrape_bandi_attivi():
-    """Scrape la pagina dei bandi attivi e restituisce una lista di elementi HTML dei bandi."""
-    response = curl_requests.get(
-        WEBSITE_URL_LIST, 
-        impersonate="chrome",
-        timeout=15
-    )
-    response.raise_for_status()  # lancia eccezione se status != 200
-    soup = BeautifulSoup(response.text, 'html.parser')
-    bandi_attivi_contenitore = soup.find("div", class_="views-rows")
-    return bandi_attivi_contenitore.find_all('article', class_='node--type-contest')
+    """Scrape la pagina dei bandi attivi"""
+    try:
+        response = scrape_get(WEBSITE_URL_LIST)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        bandi_attivi_contenitore = soup.find("div", class_="views-rows")
+        if not bandi_attivi_contenitore:
+            print("⚠️  Non trovato div.views-rows - Struttura pagina cambiata?")
+            return []
+        
+        articoli = bandi_attivi_contenitore.find_all('article', class_='node--type-contest')
+        print(f"   ✓ Trovati {len(articoli)} bandi nella lista")
+        return articoli
+        
+    except Exception as e:
+        print(f"❌ Errore in scrape_bandi_attivi: {e}")
+        raise
 
 def send_message_to_telegram(message):
     """Invia un messaggio testuale al bot Telegram configurato."""
@@ -66,16 +116,21 @@ def send_message_to_telegram(message):
         print(f"Errore invio Telegram: {e}")
 
 def fetch_bando_details(bando_url):
-    """Scrape la pagina del bando per estrarre dettagli come titolo, scadenza, requisiti."""
-    response = curl_requests.get(
-        bando_url, 
-        impersonate="chrome",
-        timeout=15
-    )
-    response.raise_for_status()
-    soup = BeautifulSoup(response.text, 'html.parser')
-    testo_completo = soup.get_text(separator='\n', strip=True)
-    return testo_completo
+    """Scrape la pagina dettagli di un singolo bando"""
+    try:
+        # Pausa casuale per sembrare più umano (importante su GitHub Actions)
+        time.sleep(random.uniform(2.5, 5.5))
+        
+        response = scrape_get(bando_url)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        testo_completo = soup.get_text(separator='\n', strip=True)
+        
+        print(f"   ✓ Dettagli scaricati - Lunghezza testo: {len(testo_completo)} caratteri")
+        return testo_completo
+        
+    except Exception as e:
+        print(f"❌ Errore in fetch_bando_details ({bando_url}): {e}")
+        raise
 
 def load_profilo():
     """Carica il profilo utente da variabile d'ambiente."""
