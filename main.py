@@ -31,7 +31,7 @@ WEBSITE_URL_LIST = "https://www.concorsipubblici.com/concorsi/occupazione/pro/se
 
 # ====================== SESSION PER LO SCRAPING ======================
 scrape_session = curl_requests.Session()
-scrape_session.impersonate = "chrome131"   # Prova anche "chrome", "chrome124", "edge"
+scrape_session.impersonate = "chrome"   # Prova anche "chrome", "chrome124", "edge"
 
 # Headers extra che aiutano a sembrare più reali
 SCRAPE_HEADERS = {
