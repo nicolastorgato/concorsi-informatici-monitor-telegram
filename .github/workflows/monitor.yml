@@ -2,7 +2,8 @@ name: Monitor Concorsi
 
 on:
   schedule:
-    - cron: '*/30 * * * *'  # ogni 30 minuti
+    # Esegui ogni giorno alle 9:00 UTC
+    - cron: '0 9 * * *'
   workflow_dispatch:
 
 jobs:

@@ -193,6 +193,7 @@ def ai_evaluate_bando(testo_bando, profilo):
             return response.json()['choices'][0]['message']['content'].strip()
         except Exception as e:
             print(f"Errore con modello {model}: {e}, provo il prossimo...")
+            time.sleep(2)  # Aspetta 2 secondi prima del prossimo tentativo
             continue
     return "⚠️ Valutazione AI non disponibile al momento."
 
