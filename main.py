@@ -79,29 +79,33 @@ def scrape_with_playwright(url):
             raise
 
 def scrape_bandi_attivi():
-    """Scrape la pagina dei bandi attivi usando Playwright"""
+    """Scrape la pagina dei bandi attivi - versione robusta"""
     try:
         html = scrape_with_playwright(WEBSITE_URL_LIST)
         soup = BeautifulSoup(html, 'html.parser')
         
-        # Salva HTML per debug (opzionale)
-        # with open("debug.html", "w", encoding="utf-8") as f:
-        #     f.write(html)
+        # Metodo 1: Cerca il container view-content
+        view_content = soup.find('div', class_='view-content')
         
-        bandi_attivi_contenitore = soup.find("div", class_="views-rows")
-        if not bandi_attivi_contenitore:
-            print("⚠️  Non trovato div.views-rows - Provo selettore alternativo")
-            bandi_attivi_contenitore = soup.find("div", {"class": "view-content"})
-            
-        if not bandi_attivi_contenitore:
-            print("⚠️  Struttura pagina cambiata, salvo HTML per debug")
-            with open("debug_error.html", "w", encoding="utf-8") as f:
-                f.write(html[:2000])  # Salva inizio pagina per debug
-            return []
+        if view_content:
+            articoli = view_content.find_all('article', class_='node--type-contest')
+            print(f"   ✓ Trovati {len(articoli)} bandi nel view-content")
+        else:
+            # Metodo 2: Cerca direttamente tutti gli article
+            articoli = soup.find_all('article', class_='node--type-contest')
+            print(f"   ✓ Trovati {len(articoli)} bandi nella pagina")
         
-        articoli = bandi_attivi_contenitore.find_all('article', class_='node--type-contest')
-        print(f"   ✓ Trovati {len(articoli)} bandi nella lista")
-        return articoli
+        # Filtra solo quelli non scaduti (opzionale)
+        # Puoi filtrare quelli che NON hanno la classe 'is-expired'
+        bandi_attivi = []
+        for art in articoli:
+            if 'is-expired' not in art.get('class', []):
+                bandi_attivi.append(art)
+        
+        if len(bandi_attivi) < len(articoli):
+            print(f"   ✓ Filtrati {len(articoli) - len(bandi_attivi)} bandi scaduti")
+        
+        return bandi_attivi
         
     except Exception as e:
         print(f"❌ Errore in scrape_bandi_attivi: {e}")
@@ -196,37 +200,120 @@ def ai_evaluate_bando(testo_bando, profilo):
 def main():
     """Esegue il monitor: scarica i bandi, rileva i nuovi e invia le notifiche Telegram."""
     try:
+        print("🚀 Avvio monitor concorsi...")
+        
+        # Carica configurazioni
         profilo = load_profilo()
+        print(f"✓ Profilo caricato: {profilo[:50]}...")
+        
+        # Carica bandi già visti
         bandi_visti = load_seen_bandi()
+        print(f"✓ Bandi già visti: {len(bandi_visti)}")
+        
+        # Scrape bandi attivi
+        print("🌐 Recupero bandi attivi...")
         bandi_attivi = scrape_bandi_attivi()
+        
+        if not bandi_attivi:
+            print("⚠️ Nessun bando trovato nella pagina!")
+            send_message_to_telegram("⚠️ Attenzione: Nessun bando trovato nella pagina. Potrebbe essere cambiata la struttura HTML.")
+            return
+        
+        print(f"✓ Trovati {len(bandi_attivi)} bandi totali")
+        
+        # Filtra per keywords e estrai URL
         bandi_trovati = []
-        for bando in bandi_attivi:
+        for idx, bando in enumerate(bandi_attivi, 1):
+            print(f"\n📌 Analizzo bando {idx}/{len(bandi_attivi)}")
+            
+            # Trova il titolo (h2 dentro l'article)
             titolo_element = bando.find('h2')
-            if titolo_element:
-                titolo = titolo_element.text.strip()
-                if any(kw in titolo.lower() for kw in KEYWORDS):
-                    link_element = bando.find('a')
-                    if link_element and link_element.get('href'):
-                        bando_url = WEBSITE_URL_ROOT + link_element['href']
-                        bandi_trovati.append(bando_url)
+            if not titolo_element:
+                print(f"   ⚠️ Nessun elemento titolo trovato")
+                continue
+                
+            titolo = titolo_element.text.strip()
+            print(f"   Titolo: {titolo[:100]}")
+            
+            # Verifica se contiene le keywords
+            keyword_trovate = [kw for kw in KEYWORDS if kw in titolo.lower()]
+            if keyword_trovate:
+                print(f"   ✅ Match keyword: {keyword_trovate}")
+                
+                # Trova il link nell'elemento h2
+                link_element = titolo_element.find('a')
+                if not link_element or not link_element.get('href'):
+                    print(f"   ⚠️ Nessun link trovato")
+                    continue
+                    
+                href = link_element['href']
+                
+                # Costruisci URL completo
+                if href.startswith('/'):
+                    bando_url = WEBSITE_URL_ROOT + href
+                else:
+                    bando_url = href
+                    
+                bandi_trovati.append(bando_url)
+                print(f"   ✅ URL aggiunto: {bando_url}")
+            else:
+                print(f"   ❌ Nessuna keyword match")
         
+        print(f"\n📊 Riepilogo: {len(bandi_trovati)} bandi trovati con le keywords")
+        
+        # Identifica bandi nuovi
         bandi_nuovi = [url for url in bandi_trovati if url not in bandi_visti]
+        print(f"🆕 Bandi nuovi: {len(bandi_nuovi)}")
         
+        # Processa bandi nuovi
         if bandi_nuovi:
-            for url in bandi_nuovi:
-                testo_bando = fetch_bando_details(url)
-                valutazione = ai_evaluate_bando(testo_bando, profilo)
-                messaggio = f"🆕 Nuovo bando trovato!\n\n🔗 {url}\n\n🤖 {valutazione}"
-                send_message_to_telegram(messaggio)
+            for i, url in enumerate(bandi_nuovi, 1):
+                print(f"\n📝 Processo bando nuovo {i}/{len(bandi_nuovi)}")
+                print(f"   URL: {url}")
+                
+                try:
+                    # Scarica dettagli del bando
+                    print(f"   📥 Scarico dettagli...")
+                    testo_bando = fetch_bando_details(url)
+                    
+                    # Valuta con AI
+                    print(f"   🤖 Valutazione AI in corso...")
+                    valutazione = ai_evaluate_bando(testo_bando, profilo)
+                    
+                    # Prepara messaggio
+                    messaggio = f"🆕 Nuovo bando trovato!\n\n🔗 {url}\n\n🤖 {valutazione}"
+                    
+                    # Invia a Telegram
+                    print(f"   📤 Invio a Telegram...")
+                    send_message_to_telegram(messaggio)
+                    
+                    print(f"   ✅ Bando processato con successo")
+                    
+                except Exception as e:
+                    print(f"   ❌ Errore processando bando {url}: {e}")
+                    # Invia errore ma continua con gli altri bandi
+                    send_message_to_telegram(f"⚠️ Errore processando bando: {url}\nErrore: {str(e)[:200]}")
+                    continue
         else:
-            print("Nessun nuovo bando trovato.")
+            print("\n✅ Nessun nuovo bando trovato.")
         
+        # Salva la lista aggiornata dei bandi trovati
         save_seen_bandi(bandi_trovati)
+        print(f"\n💾 Bandi salvati: {len(bandi_trovati)}")
+        print("✅ Monitor completato con successo!")
         
     except Exception as e:
         import traceback
-        print(traceback.format_exc())
-        send_message_to_telegram(f"⚠️ Errore nel monitor: {e}")
+        error_details = traceback.format_exc()
+        print(f"❌ ERRORE CRITICO: {error_details}")
+        
+        # Invia notifica Telegram dell'errore
+        try:
+            send_message_to_telegram(f"⚠️ Errore critico nel monitor: {str(e)[:300]}")
+        except:
+            print("Impossibile inviare notifica errore a Telegram")
+        
+        raise  # Rilancia l'eccezione per debugging
 
 if __name__ == "__main__":
     main()
